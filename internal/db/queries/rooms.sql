@@ -52,13 +52,29 @@ SELECT
         ), 'dm')
         ELSE r.name
     END)::text AS display_name,
-    (
+    (CASE WHEN r.kind = 'dm' THEN (
         SELECT rm3.user_id
         FROM room_members rm3
         WHERE rm3.room_id = r.id AND rm3.user_id <> $1
         LIMIT 1
-    ) AS peer_id
+    ) END)::uuid AS peer_id
 FROM rooms r
 JOIN room_members rm ON rm.room_id = r.id
 WHERE rm.user_id = $1
 ORDER BY r.created_at;
+
+-- name: ListPublicRooms :many
+SELECT r.id, r.name
+FROM rooms r
+WHERE r.kind = 'room'
+  AND NOT EXISTS (
+    SELECT 1 FROM room_members rm
+    WHERE rm.room_id = r.id AND rm.user_id = $1
+  )
+ORDER BY r.created_at;
+
+-- name: GetRoomByName :one
+SELECT * FROM rooms
+WHERE kind = 'room' AND lower(name) = lower($1)
+ORDER BY created_at
+LIMIT 1;

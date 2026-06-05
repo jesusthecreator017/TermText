@@ -46,6 +46,10 @@ type searchResultsMsg struct {
 	results []client.Message
 	err     error
 }
+type publicRoomsLoadedMsg struct {
+	rooms []client.Room
+	err   error
+}
 type keyFetchedMsg struct {
 	userID   string
 	username string
@@ -130,6 +134,9 @@ type chatModel struct {
 	switching bool
 	roomList  list.Model
 
+	browsing   bool
+	browseList list.Model
+
 	searching     bool
 	searchResults []client.Message
 	searchSel     int
@@ -158,7 +165,7 @@ func tickCmd() tea.Cmd {
 
 func newChatModel(c *client.Client, token string, conn *client.Conn, username string, priv *[crypto.KeySize]byte) chatModel {
 	ta := textarea.New()
-	ta.Placeholder = "Message, or /room <name>, /dm <user>, /search <text>…"
+	ta.Placeholder = "Message, or /room /dm /join /browse /search …"
 	ta.Prompt = "┃ "
 	ta.CharLimit = 2000
 	ta.SetHeight(2)
@@ -168,6 +175,10 @@ func newChatModel(c *client.Client, token string, conn *client.Conn, username st
 	rl := list.New(nil, list.NewDefaultDelegate(), 0, 0)
 	rl.Title = "Switch room"
 	rl.SetStatusBarItemName("room", "rooms")
+
+	bl := list.New(nil, list.NewDefaultDelegate(), 0, 0)
+	bl.Title = "Browse public rooms"
+	bl.SetStatusBarItemName("room", "rooms")
 
 	return chatModel{
 		client:   c,
@@ -183,9 +194,10 @@ func newChatModel(c *client.Client, token string, conn *client.Conn, username st
 		sentRead: map[string]string{},
 		pubkeys:  map[string]*[crypto.KeySize]byte{},
 		known:    client.LoadKnownKeys(),
-		textarea: ta,
-		roomList: rl,
-		status:   "connected",
+		textarea:   ta,
+		roomList:   rl,
+		browseList: bl,
+		status:     "connected",
 		styles:   newStyles(),
 		keys:     defaultKeys(),
 		help:     help.New(),
@@ -232,6 +244,24 @@ func createDMCmd(c *client.Client, token, username string) tea.Cmd {
 		defer cancel()
 		room, err := c.CreateDM(ctx, token, username)
 		return roomActionMsg{room: room, err: err}
+	}
+}
+
+func joinRoomCmd(c *client.Client, token, ident string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		room, err := c.JoinRoom(ctx, token, ident)
+		return roomActionMsg{room: room, err: err}
+	}
+}
+
+func loadPublicRoomsCmd(c *client.Client, token string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		rooms, err := c.ListPublicRooms(ctx, token)
+		return publicRoomsLoadedMsg{rooms: rooms, err: err}
 	}
 }
 
@@ -331,6 +361,13 @@ func (m chatModel) update(msg tea.Msg) (chatModel, tea.Cmd) {
 		m.searchQuery = msg.query
 		m.searchSel = 0
 
+	case publicRoomsLoadedMsg:
+		if msg.err != nil {
+			m.notice = "browse: " + msg.err.Error()
+			return m, nil
+		}
+		m.openBrowse(msg.rooms)
+
 	case wsEnvelopeMsg:
 		m.appendEnvelope(msg.env)
 		cmds = append(cmds, readCmd(m.conn))
@@ -347,6 +384,9 @@ func (m chatModel) update(msg tea.Msg) (chatModel, tea.Cmd) {
 		}
 		if m.switching {
 			return m.updateSwitcher(msg)
+		}
+		if m.browsing {
+			return m.updateBrowse(msg)
 		}
 		switch msg.String() {
 		case "ctrl+k":
@@ -564,6 +604,14 @@ func (m *chatModel) handleCommand(line string) tea.Cmd {
 			return nil
 		}
 		return createDMCmd(m.client, m.token, arg)
+	case "/join":
+		if arg == "" {
+			m.notice = "usage: /join <room name>"
+			return nil
+		}
+		return joinRoomCmd(m.client, m.token, arg)
+	case "/browse":
+		return loadPublicRoomsCmd(m.client, m.token)
 	case "/search":
 		if arg == "" {
 			m.notice = "usage: /search <text>"
@@ -571,7 +619,7 @@ func (m *chatModel) handleCommand(line string) tea.Cmd {
 		}
 		return searchCmd(m.client, m.token, arg)
 	case "/help":
-		m.notice = "/room <name> · /dm <user> · /search <text> · ctrl+k switch · ctrl+l sign out"
+		m.notice = "/room · /dm · /join · /browse · /search · ctrl+k switch · ctrl+l sign out"
 		return nil
 	default:
 		m.notice = "unknown command: " + cmd
@@ -625,6 +673,42 @@ func (m chatModel) updateSwitcher(msg tea.KeyMsg) (chatModel, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.roomList, cmd = m.roomList.Update(msg)
+	return m, cmd
+}
+
+func (m *chatModel) openBrowse(rooms []client.Room) {
+	items := make([]list.Item, len(rooms))
+	for i, r := range rooms {
+		items[i] = roomListItem{room: r}
+	}
+	m.browseList.SetItems(items)
+	m.browseList.ResetFilter()
+	if m.width > 0 && m.height > 0 {
+		m.browseList.SetSize(m.width, m.height)
+	}
+	m.browsing = true
+}
+
+func (m chatModel) updateBrowse(msg tea.KeyMsg) (chatModel, tea.Cmd) {
+	if m.browseList.FilterState() == list.Filtering {
+		var cmd tea.Cmd
+		m.browseList, cmd = m.browseList.Update(msg)
+		return m, cmd
+	}
+	switch msg.String() {
+	case "esc":
+		m.browsing = false
+		return m, nil
+	case "enter":
+		var cmd tea.Cmd
+		if it, ok := m.browseList.SelectedItem().(roomListItem); ok {
+			cmd = joinRoomCmd(m.client, m.token, it.room.ID) // roomActionMsg joins + switches
+		}
+		m.browsing = false
+		return m, cmd
+	}
+	var cmd tea.Cmd
+	m.browseList, cmd = m.browseList.Update(msg)
 	return m, cmd
 }
 
@@ -729,6 +813,7 @@ func (m *chatModel) layout() {
 	m.textarea.SetWidth(vpWidth)
 	m.help.Width = vpWidth
 	m.roomList.SetSize(m.width, m.height)
+	m.browseList.SetSize(m.width, m.height)
 	if rb := m.buffers[m.active]; rb != nil {
 		m.viewport.SetContent(m.renderBuffer(m.active, rb))
 	}
@@ -861,6 +946,9 @@ func (m chatModel) view() string {
 	}
 	if m.switching {
 		return m.roomList.View()
+	}
+	if m.browsing {
+		return m.browseList.View()
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, m.roomsView(), m.chatPane())
 }

@@ -115,6 +115,27 @@ func (q *Queries) GetRoomByID(ctx context.Context, id pgtype.UUID) (Room, error)
 	return i, err
 }
 
+const getRoomByName = `-- name: GetRoomByName :one
+SELECT id, name, kind, dm_key, created_by, created_at FROM rooms
+WHERE kind = 'room' AND lower(name) = lower($1)
+ORDER BY created_at
+LIMIT 1
+`
+
+func (q *Queries) GetRoomByName(ctx context.Context, lower string) (Room, error) {
+	row := q.db.QueryRow(ctx, getRoomByName, lower)
+	var i Room
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Kind,
+		&i.DmKey,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const isRoomMember = `-- name: IsRoomMember :one
 SELECT EXISTS (
     SELECT 1 FROM room_members
@@ -132,6 +153,42 @@ func (q *Queries) IsRoomMember(ctx context.Context, arg IsRoomMemberParams) (boo
 	var is_member bool
 	err := row.Scan(&is_member)
 	return is_member, err
+}
+
+const listPublicRooms = `-- name: ListPublicRooms :many
+SELECT r.id, r.name
+FROM rooms r
+WHERE r.kind = 'room'
+  AND NOT EXISTS (
+    SELECT 1 FROM room_members rm
+    WHERE rm.room_id = r.id AND rm.user_id = $1
+  )
+ORDER BY r.created_at
+`
+
+type ListPublicRoomsRow struct {
+	ID   pgtype.UUID `json:"id"`
+	Name string      `json:"name"`
+}
+
+func (q *Queries) ListPublicRooms(ctx context.Context, userID pgtype.UUID) ([]ListPublicRoomsRow, error) {
+	rows, err := q.db.Query(ctx, listPublicRooms, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPublicRoomsRow{}
+	for rows.Next() {
+		var i ListPublicRoomsRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listRoomMemberIDs = `-- name: ListRoomMemberIDs :many
@@ -206,12 +263,12 @@ SELECT
         ), 'dm')
         ELSE r.name
     END)::text AS display_name,
-    (
+    (CASE WHEN r.kind = 'dm' THEN (
         SELECT rm3.user_id
         FROM room_members rm3
         WHERE rm3.room_id = r.id AND rm3.user_id <> $1
         LIMIT 1
-    ) AS peer_id
+    ) END)::uuid AS peer_id
 FROM rooms r
 JOIN room_members rm ON rm.room_id = r.id
 WHERE rm.user_id = $1

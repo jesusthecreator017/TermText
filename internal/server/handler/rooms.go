@@ -102,31 +102,70 @@ func (h *Handler) PostRoom(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GetPublicRooms lists joinable public rooms the caller is not already in.
+func (h *Handler) GetPublicRooms(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.requireUser(w, r)
+	if !ok {
+		return
+	}
+	rows, err := h.DB.ListPublicRooms(r.Context(), userID)
+	if err != nil {
+		h.Logger.Error("rooms: public", "err", err)
+		respond.WithError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	out := make([]roomResponse, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, roomResponse{ID: uid.String(row.ID), Kind: "room", DisplayName: row.Name})
+	}
+	respond.WithJson(w, http.StatusOK, respond.Envelope{"rooms": out})
+}
+
+// JoinRoom adds the caller to a public room identified by either its UUID or its
+// name (path param {id}), returning the joined room so the client can switch in.
 func (h *Handler) JoinRoom(w http.ResponseWriter, r *http.Request) {
 	userID, ok := h.requireUser(w, r)
 	if !ok {
 		return
 	}
-	roomID, err := uid.Parse(r.PathValue("id"))
-	if err != nil {
-		respond.WithError(w, http.StatusBadRequest, "invalid room id")
-		return
-	}
-	if _, err := h.DB.GetRoomByID(r.Context(), roomID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			respond.WithError(w, http.StatusNotFound, "room not found")
+	ident := r.PathValue("id")
+
+	var room sqlcgen.Room
+	if roomID, err := uid.Parse(ident); err == nil {
+		room, err = h.DB.GetRoomByID(r.Context(), roomID)
+		if err != nil {
+			h.roomLookupError(w, err)
 			return
 		}
-		h.Logger.Error("rooms: get", "err", err)
-		respond.WithError(w, http.StatusInternalServerError, "internal server error")
+	} else {
+		room, err = h.DB.GetRoomByName(r.Context(), ident)
+		if err != nil {
+			h.roomLookupError(w, err)
+			return
+		}
+	}
+
+	if room.Kind != "room" {
+		respond.WithError(w, http.StatusBadRequest, "not a joinable room")
 		return
 	}
-	if err := h.DB.AddRoomMember(r.Context(), sqlcgen.AddRoomMemberParams{RoomID: roomID, UserID: userID}); err != nil {
+	if err := h.DB.AddRoomMember(r.Context(), sqlcgen.AddRoomMemberParams{RoomID: room.ID, UserID: userID}); err != nil {
 		h.Logger.Error("rooms: join", "err", err)
 		respond.WithError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	respond.WithJson(w, http.StatusOK, respond.Envelope{"status": "joined"})
+	respond.WithJson(w, http.StatusOK, respond.Envelope{
+		"room": roomResponse{ID: uid.String(room.ID), Kind: room.Kind, DisplayName: room.Name},
+	})
+}
+
+func (h *Handler) roomLookupError(w http.ResponseWriter, err error) {
+	if errors.Is(err, pgx.ErrNoRows) {
+		respond.WithError(w, http.StatusNotFound, "room not found")
+		return
+	}
+	h.Logger.Error("rooms: get", "err", err)
+	respond.WithError(w, http.StatusInternalServerError, "internal server error")
 }
 
 // PostDM creates (or returns the existing) direct-message room with another user.

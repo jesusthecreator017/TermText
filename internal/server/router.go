@@ -30,6 +30,7 @@ func Mount(mux *http.ServeMux, h *handler.Handler, tm *auth.TokenMaker, logger *
 	}
 	authed("GET /me", h.GetMe)
 	authed("GET /rooms", h.GetRooms)
+	authed("GET /rooms/public", h.GetPublicRooms)
 	authed("POST /rooms", h.PostRoom)
 	authed("POST /rooms/{id}/join", h.JoinRoom)
 	authed("GET /rooms/{id}/messages", h.GetRoomMessages)

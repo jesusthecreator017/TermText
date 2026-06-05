@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 )
 
 type Room struct {
@@ -16,10 +17,19 @@ type Room struct {
 }
 
 func (c *Client) ListRooms(ctx context.Context, token string) ([]Room, error) {
+	return c.listRooms(ctx, token, "/rooms")
+}
+
+// ListPublicRooms returns joinable public rooms the caller is not in.
+func (c *Client) ListPublicRooms(ctx context.Context, token string) ([]Room, error) {
+	return c.listRooms(ctx, token, "/rooms/public")
+}
+
+func (c *Client) listRooms(ctx context.Context, token, path string) ([]Room, error) {
 	var body struct {
 		Rooms []Room `json:"rooms"`
 	}
-	if err := c.doJSON(ctx, http.MethodGet, "/rooms", token, nil, &body); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, token, nil, &body); err != nil {
 		return nil, err
 	}
 	return body.Rooms, nil
@@ -33,8 +43,15 @@ func (c *Client) CreateDM(ctx context.Context, token, username string) (Room, er
 	return c.roomMutation(ctx, "/dms", token, map[string]string{"username": username})
 }
 
-func (c *Client) JoinRoom(ctx context.Context, token, roomID string) error {
-	return c.doJSON(ctx, http.MethodPost, "/rooms/"+roomID+"/join", token, nil, nil)
+// JoinRoom joins a public room by UUID or name, returning the joined room.
+func (c *Client) JoinRoom(ctx context.Context, token, ident string) (Room, error) {
+	var body struct {
+		Room Room `json:"room"`
+	}
+	if err := c.doJSON(ctx, http.MethodPost, "/rooms/"+url.PathEscape(ident)+"/join", token, nil, &body); err != nil {
+		return Room{}, err
+	}
+	return body.Room, nil
 }
 
 func (c *Client) roomMutation(ctx context.Context, path, token string, payload map[string]string) (Room, error) {
