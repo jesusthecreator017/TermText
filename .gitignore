@@ -1,0 +1,8 @@
+# Secrets & local env
+.env
+
+# Build output
+bin/
+
+# OS / editor
+.DS_Store

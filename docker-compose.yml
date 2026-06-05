@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: termtext-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: termtext
+      POSTGRES_PASSWORD: termtext_dev
+      POSTGRES_DB: termtext
+    ports:
+      - "5432:5432"
+    volumes:
+      - termtext_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U termtext -d termtext"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  termtext_pgdata:
