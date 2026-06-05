@@ -8,7 +8,7 @@ rooms & DMs, message history, full-text search, presence / typing / read
 receipts, and **end-to-end encrypted direct messages**.
 
 <!-- ![TermText chat screen](docs/images/chat.png) -->
-> _📸 Add a screenshot of the chat screen here (two clients side by side works well)._
+<img width="1385" height="825" alt="Screenshot 2026-06-05 at 2 48 17 PM" src="https://github.com/user-attachments/assets/0471c7b9-a276-4260-b6c1-d1b2950480a4" />
 
 ---
 
@@ -24,7 +24,7 @@ receipts, and **end-to-end encrypted direct messages**.
 - 📈 **Production hardening** — structured request logging with request IDs, panic recovery, Prometheus `/metrics`, per-IP rate limiting, a distroless Docker image, and GitHub Actions CI.
 
 <!-- ![Room switcher](docs/images/switcher.png) -->
-> _📸 Add a screenshot of the Ctrl+K room switcher here._
+<img width="1512" height="982" alt="Screenshot 2026-06-05 at 2 50 33 PM" src="https://github.com/user-attachments/assets/6d479d16-5a85-4085-817d-29ee237207ae" />
 
 ---
 
@@ -47,8 +47,6 @@ receipts, and **end-to-end encrypted direct messages**.
                                                    └──────────────┘
 ```
 
-<!-- ![Architecture diagram](docs/images/architecture.png) -->
-> _📸 Optional: replace the ASCII diagram above with a polished architecture image._
 
 ### Project layout
 
@@ -148,7 +146,7 @@ Sign up two users (press **Ctrl+T** on the login screen to toggle sign-up),
 then chat. Open a DM with `/dm <username>`.
 
 <!-- ![Login screen](docs/images/login.png) -->
-> _📸 Add a screenshot of the login / sign-up screen here._
+<img width="1508" height="951" alt="Screenshot 2026-06-05 at 2 51 52 PM" src="https://github.com/user-attachments/assets/ea4ca215-7546-4545-8a23-3de16c46354c" />
 
 ---
 
@@ -165,8 +163,7 @@ then chat. Open a DM with `/dm <username>`.
 | `ctrl+l` | Sign out |
 | `ctrl+c` | Quit |
 
-<!-- ![DM with lock indicator](docs/images/dm-e2ee.png) -->
-> _📸 Add a screenshot of an encrypted DM (note the 🔒 indicator) here._
+<img width="1132" height="617" alt="Screenshot 2026-06-05 at 2 52 45 PM" src="https://github.com/user-attachments/assets/2868578f-0880-418e-a8a1-e1ceb7364082" />
 
 ---
 
@@ -231,24 +228,6 @@ fly deploy
 
 > **Note:** migrations are currently run manually via `goose`; run them against
 > the Fly Postgres before first use.
-
----
-
-## Roadmap status
-
-All eight build phases are complete:
-
-- [x] **Phase 0** — Foundations (server, config, Docker Postgres)
-- [x] **Phase 1** — Auth + REST (argon2id, PASETO, middleware)
-- [x] **Phase 2** — WebSocket hub
-- [x] **Phase 3** — TUI MVP
-- [x] **Phase 4** — Rooms & DMs (persisted messages)
-- [x] **Phase 5** — History + full-text search
-- [x] **Phase 6** — Presence, typing, read receipts
-- [x] **Phase 7** — End-to-end encrypted DMs
-- [x] **Phase 8** — Production hardening & deploy
-
-See [`plan/roadmap.md`](plan/roadmap.md) for the full design rationale.
 
 ---
 
