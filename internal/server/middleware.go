@@ -42,11 +42,15 @@ func AuthMiddleware(tm *auth.TokenMaker) func(http.Handler) http.Handler {
 	}
 }
 
-// statusRecorder captures the response status code for access logging.
+// statusRecorder captures the response status code for access logging. Unwrap
+// lets http.ResponseController reach the underlying writer so capabilities like
+// http.Hijacker (needed by the WebSocket upgrade) keep working.
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
 }
+
+func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
 func (s *statusRecorder) WriteHeader(code int) {
 	s.status = code

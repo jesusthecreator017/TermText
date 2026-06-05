@@ -51,7 +51,6 @@ type Model struct {
 
 	width  int
 	height int
-	fatal  string
 }
 
 func New(c *client.Client) Model {
